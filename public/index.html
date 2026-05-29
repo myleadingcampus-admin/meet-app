@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Session Module</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Manrope", "ui-sans-serif", "system-ui"],
+              display: ["Space Grotesk", "Manrope", "ui-sans-serif", "system-ui"],
+            },
+            boxShadow: {
+              premium: "0 18px 45px -20px rgba(15, 23, 42, 0.45)",
+            },
+          },
+        },
+      };
+    </script>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100 antialiased">
+    <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(20,184,166,0.2),transparent_42%),radial-gradient(circle_at_85%_10%,rgba(59,130,246,0.22),transparent_35%),linear-gradient(180deg,#020617,#0f172a_45%,#111827)]"></div>
+
+    <main class="relative mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8 sm:px-6">
+      <section class="w-full rounded-3xl border border-slate-700/60 bg-slate-900/65 p-6 shadow-premium backdrop-blur-xl sm:p-10">
+        <div class="mb-8 space-y-2">
+          <p class="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">
+            Live Sessions
+          </p>
+          <h1 class="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">Go Live. Keep Doubts Moving.</h1>
+          <p class="max-w-2xl text-sm text-slate-300 sm:text-base">
+            Create a session in seconds, stream with YouTube Live, and run doubt resolution in your app without workflow clutter.
+          </p>
+        </div>
+
+        <section class="rounded-2xl border border-slate-700/70 bg-slate-950/50 p-4 sm:p-6">
+          <h2 class="mb-4 font-display text-xl font-semibold text-white">Create Session</h2>
+          <form id="createForm" class="space-y-3">
+            <label for="classTitle" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Session Title</label>
+            <input
+              id="classTitle"
+              placeholder="Ex: Physics Live Doubt Marathon"
+              required
+              class="w-full rounded-xl border border-slate-600/80 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none ring-0 transition duration-200 placeholder:text-slate-500 focus:border-emerald-400/70 focus:shadow-[0_0_0_4px_rgba(16,185,129,0.2)]"
+            />
+            <button
+              type="submit"
+              class="group relative inline-flex w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-3 text-sm font-bold text-slate-950 transition duration-200 hover:scale-[1.01] hover:brightness-110"
+            >
+              <span class="relative">Create Session</span>
+            </button>
+          </form>
+
+          <p id="createResult" class="mt-4 text-sm text-slate-300"></p>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const createForm = document.getElementById("createForm");
+      const createResult = document.getElementById("createResult");
+
+      createForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = document.getElementById("classTitle").value.trim();
+        const res = await fetch("/api/classes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          createResult.textContent = data.error || "Could not create class";
+          return;
+        }
+
+        createResult.innerHTML = `
+          <span class="text-emerald-300">Session created:</span>
+          <span class="font-semibold text-white">${data.id}</span><br/>
+          <a class="font-semibold text-cyan-300 hover:text-cyan-200" href="/teacher.html?classId=${data.id}">Open Host View</a>
+          <span class="mx-2 text-slate-500">|</span>
+          <a class="font-semibold text-cyan-300 hover:text-cyan-200" href="/student.html?classId=${data.id}">Open Participant View</a>
+        `;
+      });
+    </script>
+  </body>
+</html>

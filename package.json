@@ -1,0 +1,16 @@
+{
+  "name": "hybrid-class-module",
+  "version": "0.1.0",
+  "description": "Module-first hybrid classroom: YouTube live + realtime interactions + Jitsi breakout",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.1.0"
+  }
+}

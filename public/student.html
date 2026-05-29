@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Participant Session</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Manrope", "ui-sans-serif", "system-ui"],
+              display: ["Space Grotesk", "Manrope", "ui-sans-serif", "system-ui"],
+            },
+            boxShadow: {
+              premium: "0 20px 50px -24px rgba(2, 8, 23, 0.7)",
+            },
+          },
+        },
+      };
+    </script>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+    />
+    <style>
+      #chat::-webkit-scrollbar { width: 8px; }
+      #chat::-webkit-scrollbar-thumb { background: #334155; border-radius: 999px; }
+    </style>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100 antialiased">
+    <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(20,184,166,0.16),transparent_40%),radial-gradient(circle_at_84%_5%,rgba(59,130,246,0.2),transparent_33%),linear-gradient(180deg,#020617,#0f172a_45%,#111827)]"></div>
+
+    <main class="relative mx-auto grid w-full max-w-7xl grid-cols-1 gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[1.6fr_1fr] lg:py-6">
+      <section class="space-y-4">
+        <header class="rounded-2xl border border-slate-700/70 bg-slate-900/65 p-5 shadow-premium backdrop-blur-xl">
+          <p class="mb-2 inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">Participant View</p>
+          <h1 class="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">Live Session</h1>
+          <p id="meta" class="mt-3 inline-flex rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-300"></p>
+        </header>
+
+        <div id="ytContainer" class="hidden rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
+          <h2 class="font-display text-xl font-semibold text-white">Now Streaming</h2>
+          <div class="mt-3 overflow-hidden rounded-xl border border-slate-700 bg-black">
+            <iframe
+              id="ytFrame"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              referrerpolicy="strict-origin-when-cross-origin"
+              sandbox="allow-same-origin allow-scripts allow-presentation"
+              allowfullscreen
+              class="w-full aspect-video"
+            ></iframe>
+          </div>
+          <p id="guardHint" class="mt-2 text-sm text-slate-400">Playback is enabled in session mode.</p>
+        </div>
+
+        <div class="rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
+          <h2 class="font-display text-xl font-semibold text-white">Doubt Request</h2>
+          <button id="raiseHandBtn" class="mt-3 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">Raise Hand</button>
+          <p id="raiseStatus" class="mt-3 text-sm text-slate-400">Host can invite selected participants to the doubt room.</p>
+        </div>
+
+        <div id="breakoutSection" class="hidden rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
+          <h2 class="font-display text-xl font-semibold text-white">Doubt Room Invite</h2>
+          <p class="mt-1 text-sm text-slate-400">You are invited to join the doubt room.</p>
+          <div id="participantDoubtEmbedWrap" class="hidden mt-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
+            <iframe
+              id="participantDoubtFrame"
+              allow="camera *; microphone *; display-capture *; autoplay *; fullscreen *"
+              referrerpolicy="strict-origin-when-cross-origin"
+              class="w-full aspect-video"
+            ></iframe>
+          </div>
+          <a id="joinBreakoutLink" target="_blank" rel="noreferrer" class="mt-3 inline-flex items-center justify-center rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/15">Join Doubt Room</a>
+        </div>
+      </section>
+
+      <aside>
+        <section class="rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
+          <h2 class="font-display text-xl font-semibold text-white">Q&A Chat</h2>
+          <div id="chat" class="mt-3 h-[540px] overflow-y-auto rounded-xl border border-slate-700 bg-slate-950/70 p-3"></div>
+          <form id="chatForm" class="mt-3 space-y-2">
+            <input id="chatInput" placeholder="Ask your question" required class="w-full rounded-xl border border-slate-600 bg-slate-900 px-4 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-400/70 focus:shadow-[0_0_0_4px_rgba(34,211,238,0.18)]" />
+            <button type="submit" class="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">Send</button>
+          </form>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/utils.js"></script>
+    <script>
+      const classId = getRequiredQuery("classId");
+      const studentName = prompt("Enter your name", "Participant") || "Participant";
+      const socket = io();
+      const student = {
+        userId: `student-${Math.random().toString(36).slice(2, 8)}`,
+        name: studentName,
+        role: "student",
+      };
+
+      const meta = document.getElementById("meta");
+      const chatEl = document.getElementById("chat");
+      const ytContainer = document.getElementById("ytContainer");
+      const ytFrame = document.getElementById("ytFrame");
+      const breakoutSection = document.getElementById("breakoutSection");
+      const joinBreakoutLink = document.getElementById("joinBreakoutLink");
+      const participantDoubtEmbedWrap = document.getElementById("participantDoubtEmbedWrap");
+      const participantDoubtFrame = document.getElementById("participantDoubtFrame");
+      const guardHint = document.getElementById("guardHint");
+      const raiseStatus = document.getElementById("raiseStatus");
+      let youtubeWarningEl = null;
+
+      function withJoinIdentity(url, name) {
+        if (!url) return "#";
+        try {
+          const parsed = new URL(url);
+          if (name?.trim()) parsed.searchParams.set("name", name.trim());
+          parsed.searchParams.set("audio", "1");
+          parsed.searchParams.set("video", "0");
+          return parsed.toString();
+        } catch (_err) {
+          return url;
+        }
+      }
+
+      function appendChat(message) {
+        const row = document.createElement("div");
+        row.className = "mb-2 rounded-lg border border-slate-800 bg-slate-900/80 p-2.5";
+        row.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <strong class="text-sm font-semibold text-slate-100">${message.name}</strong>
+            <span class="text-[11px] text-slate-500">${new Date(message.ts).toLocaleTimeString()}</span>
+          </div>
+          <p class="mt-1 text-sm text-slate-300">${message.message}</p>
+        `;
+        chatEl.appendChild(row);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      function applyClassState(state) {
+        meta.textContent = `Class ID: ${state.id} | Status: ${state.status} | Participants: ${state.participantCount}`;
+
+        if (state.youtubeUrl) {
+          const embedUrl = toYouTubeEmbedUrl(state.youtubeUrl);
+          if (embedUrl) {
+            ytContainer.classList.remove("hidden");
+            ytFrame.src = embedUrl;
+            if (youtubeWarningEl) {
+              youtubeWarningEl.remove();
+              youtubeWarningEl = null;
+            }
+          } else {
+            ytContainer.classList.add("hidden");
+            if (!youtubeWarningEl) {
+              youtubeWarningEl = document.createElement("p");
+              youtubeWarningEl.className =
+                "mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-300";
+              youtubeWarningEl.textContent =
+                "Host has set a non-embeddable YouTube link. Ask host to use a video/live URL with video ID.";
+              meta.insertAdjacentElement("afterend", youtubeWarningEl);
+            }
+          }
+        }
+
+        chatEl.innerHTML = "";
+        (state.chat || []).forEach(appendChat);
+
+        breakoutSection.classList.add("hidden");
+        joinBreakoutLink.href = "#";
+        participantDoubtEmbedWrap.classList.add("hidden");
+        participantDoubtFrame.src = "about:blank";
+      }
+
+      document.getElementById("raiseHandBtn").addEventListener("click", () => {
+        socket.emit("hand-raise:add");
+        raiseStatus.textContent = "Hand raise sent. Waiting for host approval.";
+      });
+
+      guardHint.textContent = "Playback is enabled in session mode.";
+
+      document.getElementById("chatForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("chatInput");
+        socket.emit("chat:send", { message: input.value });
+        input.value = "";
+      });
+
+      socket.on("connect", () => {
+        socket.emit("join:class", { classId, ...student });
+      });
+
+      socket.on("class:updated", applyClassState);
+      socket.on("chat:message", appendChat);
+      socket.on("hand-raise:result", ({ status }) => {
+        if (status === "accepted") {
+          raiseStatus.textContent = "Host accepted your hand raise.";
+          return;
+        }
+        raiseStatus.textContent = "Host rejected your hand raise. You can try again.";
+      });
+
+      socket.on("breakout:invited", (room) => {
+        if (room) {
+          const participantJoinUrl = withJoinIdentity(room.url, studentName);
+          breakoutSection.classList.remove("hidden");
+          joinBreakoutLink.href = participantJoinUrl;
+          joinBreakoutLink.textContent = "Join Doubt Room";
+          participantDoubtEmbedWrap.classList.remove("hidden");
+          participantDoubtFrame.src = participantJoinUrl;
+          raiseStatus.textContent = "You are invited to the doubt-solving room.";
+        } else {
+          breakoutSection.classList.add("hidden");
+          joinBreakoutLink.href = "#";
+          participantDoubtEmbedWrap.classList.add("hidden");
+          participantDoubtFrame.src = "about:blank";
+        }
+      });
+
+      fetch(`/api/classes/${classId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.error) return;
+          applyClassState(data);
+        });
+    </script>
+  </body>
+</html>
