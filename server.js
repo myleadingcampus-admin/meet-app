@@ -123,17 +123,22 @@ function closeBreakoutRoom(classroom) {
   const activeRoom = getActiveBreakoutRoom(classroom);
   if (!activeRoom) return;
 
+  const activeUserId = activeRoom.userId;
+  const targetSocketId = findSocketIdByUserId(classroom, activeUserId);
+
   classroom.handRaiseQueue = classroom.handRaiseQueue.filter(
-    (item) => item.userId !== activeRoom.userId
+    (item) => item.userId !== activeUserId
   );
-  delete classroom.breakoutRoomsByUserId[activeRoom.userId];
+  delete classroom.breakoutRoomsByUserId[activeUserId];
   classroom.activeBreakoutUserId = null;
   classroom.updatedAt = new Date().toISOString();
   clearBreakoutCloseTimer(classroom.id);
 
   io.to(classroom.id).emit("queue:updated", classroom.handRaiseQueue);
   emitBreakoutToTeachers(classroom.id, classroom);
-  io.to(classroom.id).emit("breakout:invited", null);
+  if (targetSocketId) {
+    io.to(targetSocketId).emit("breakout:invited", null);
+  }
   io.to(classroom.id).emit("class:updated", publicClassPayload(classroom));
 }
 
@@ -341,8 +346,6 @@ io.on("connection", (socket) => {
 
     // Notify teachers only for room control UI.
     emitBreakoutToTeachers(classId, classroom);
-
-    io.to(classId).emit("breakout:invited", room);
 
     io.to(classId).emit("class:updated", publicClassPayload(classroom));
   });

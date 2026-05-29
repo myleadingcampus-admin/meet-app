@@ -165,6 +165,37 @@
       let isDoubtRoomActive = false;
       let activeDoubtRoom = null;
       let sessionEnded = false;
+      let previousPendingIds = new Set();
+      let audioContext = null;
+
+      function ensureAudioContext() {
+        if (!audioContext) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          if (Ctx) audioContext = new Ctx();
+        }
+        if (audioContext && audioContext.state === "suspended") {
+          audioContext.resume().catch(() => {});
+        }
+      }
+
+      function playTingSound() {
+        ensureAudioContext();
+        if (!audioContext || audioContext.state !== "running") return;
+
+        const now = audioContext.currentTime;
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(1320, now);
+        osc.frequency.exponentialRampToValueAtTime(1760, now + 0.09);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.15, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+        osc.connect(gain);
+        gain.connect(audioContext.destination);
+        osc.start(now);
+        osc.stop(now + 0.2);
+      }
 
       function openHostDoubtModal() {
         if (sessionEnded || !activeDoubtRoom?.url) return;
@@ -257,6 +288,12 @@
       function renderQueue(items) {
         queueEl.innerHTML = "";
         const pending = items.filter((x) => x.status === "pending");
+        const pendingIds = new Set(pending.map((item) => item.userId));
+        const hasNewPending = pending.some((item) => !previousPendingIds.has(item.userId));
+        if (hasNewPending && !sessionEnded) {
+          playTingSound();
+        }
+        previousPendingIds = pendingIds;
         hasPendingDoubt = pending.length > 0;
         refreshDoubtRoomVisibility();
         if (!pending.length) {
@@ -370,6 +407,9 @@
       youtubeUrlInput.addEventListener("input", scheduleAutoStart);
       youtubeUrlInput.addEventListener("change", scheduleAutoStart);
       youtubeUrlInput.addEventListener("blur", scheduleAutoStart);
+      ["click", "keydown", "touchstart"].forEach((evtName) => {
+        window.addEventListener(evtName, ensureAudioContext, { passive: true });
+      });
 
       document.getElementById("endBtn").addEventListener("click", async () => {
         const res = await fetch(`/api/classes/${classId}/end`, { method: "POST" });

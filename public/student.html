@@ -325,6 +325,7 @@
 
       socket.on("breakout:invited", (room) => {
         if (sessionEnded) return;
+        if (room && room.userId && room.userId !== student.userId) return;
         if (room) {
           const participantJoinUrl = withJoinIdentity(room.url, studentName);
           activeDoubtJoinUrl = participantJoinUrl;
