@@ -55,10 +55,10 @@
           <p id="guardHint" class="mt-2 text-sm text-slate-400">Playback is enabled in session mode.</p>
         </div>
 
-        <div class="rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
-          <h2 class="font-display text-xl font-semibold text-white">Doubt Request</h2>
-          <button id="raiseHandBtn" class="mt-3 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">Raise Hand</button>
-          <p id="raiseStatus" class="mt-3 text-sm text-slate-400">Host can invite selected participants to the doubt room.</p>
+        <div id="doubtRequestCard" class="rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
+          <h2 id="doubtTitle" class="font-display text-xl font-semibold text-white">Waiting for session</h2>
+          <button id="raiseHandBtn" class="hidden mt-3 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">Raise Hand</button>
+          <p id="raiseStatus" class="mt-3 text-sm text-slate-400">Waiting for host to start the session.</p>
         </div>
 
         <div id="breakoutSection" class="hidden rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
@@ -109,6 +109,7 @@
       const participantDoubtEmbedWrap = document.getElementById("participantDoubtEmbedWrap");
       const participantDoubtFrame = document.getElementById("participantDoubtFrame");
       const guardHint = document.getElementById("guardHint");
+      const doubtTitle = document.getElementById("doubtTitle");
       const raiseStatus = document.getElementById("raiseStatus");
       const raiseHandBtn = document.getElementById("raiseHandBtn");
       const chatForm = document.getElementById("chatForm");
@@ -117,7 +118,9 @@
       let currentYouTubeEmbedSrc = "";
       let isLiveMutedForDoubt = false;
       let muteRetryTimer = null;
+      let sessionLive = false;
       let sessionEnded = false;
+      let lastClassStatus = "";
 
       function withJoinIdentity(url, name) {
         if (!url) return "#";
@@ -197,8 +200,28 @@
         }
       }
 
+      function applySessionStage(status) {
+        sessionLive = status === "live";
+        const waiting = status === "scheduled";
+
+        if (waiting) {
+          doubtTitle.textContent = "Waiting for session";
+          raiseStatus.textContent = "Waiting for host to start the session.";
+          raiseHandBtn.classList.add("hidden");
+        }
+
+        if (sessionLive) {
+          doubtTitle.textContent = "Doubt Request";
+          raiseHandBtn.classList.remove("hidden");
+          if (lastClassStatus !== "live") {
+            raiseStatus.textContent = "Host can invite selected participants to the doubt room.";
+          }
+        }
+      }
+
       function applyClassState(state) {
         meta.textContent = `Class ID: ${state.id} | Status: ${state.status} | Participants: ${state.participantCount}`;
+        applySessionStage(state.status);
         setSessionEndedState(state.status === "ended");
 
         if (state.youtubeUrl) {
@@ -228,10 +251,11 @@
 
         chatEl.innerHTML = "";
         (state.chat || []).forEach(appendChat);
+        lastClassStatus = state.status;
       }
 
       raiseHandBtn.addEventListener("click", () => {
-        if (sessionEnded) return;
+        if (sessionEnded || !sessionLive) return;
         socket.emit("hand-raise:add");
         raiseStatus.textContent = "Hand raise sent. Waiting for host approval.";
       });
