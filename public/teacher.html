@@ -70,14 +70,9 @@
             Close Doubt Room
           </button>
 
-          <div id="hostDoubtEmbedWrap" class="hidden mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
-            <iframe
-              id="hostDoubtFrame"
-              allow="camera *; microphone *; display-capture *; autoplay *; fullscreen *"
-              referrerpolicy="strict-origin-when-cross-origin"
-              class="w-full aspect-video"
-            ></iframe>
-          </div>
+          <button id="openHostDoubtModalBtn" type="button" class="hidden mt-4 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">
+            Open Doubt Room
+          </button>
 
           <div id="breakoutLinkWrap" class="hidden mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
             <a id="breakoutLink" target="_blank" rel="noreferrer" class="truncate rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-cyan-300 hover:text-cyan-200">Open Doubt Room</a>
@@ -107,6 +102,27 @@
       </aside>
     </main>
 
+    <div id="hostDoubtModal" class="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-6">
+      <div id="hostDoubtModalBackdrop" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"></div>
+      <section class="relative z-10 flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <header class="flex items-center justify-between border-b border-slate-700 px-4 py-3 sm:px-6">
+          <h3 class="font-display text-xl font-semibold text-white">Doubt Room</h3>
+          <div class="flex items-center gap-2">
+            <a id="hostModalBreakoutLink" target="_blank" rel="noreferrer" class="inline-flex items-center justify-center rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-400/15">Open in New Tab</a>
+            <button id="closeHostDoubtModalBtn" type="button" class="inline-flex items-center justify-center rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-500">Close Doubt Room</button>
+          </div>
+        </header>
+        <div class="min-h-0 flex-1 bg-slate-950">
+          <iframe
+            id="hostDoubtFrame"
+            allow="camera *; microphone *; display-capture *; autoplay *; fullscreen *"
+            referrerpolicy="strict-origin-when-cross-origin"
+            class="h-full w-full"
+          ></iframe>
+        </div>
+      </section>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="/utils.js"></script>
     <script>
@@ -126,7 +142,11 @@
       const breakoutLink = document.getElementById("breakoutLink");
       const copyBreakoutBtn = document.getElementById("copyBreakoutBtn");
       const closeDoubtBtn = document.getElementById("closeDoubtBtn");
-      const hostDoubtEmbedWrap = document.getElementById("hostDoubtEmbedWrap");
+      const openHostDoubtModalBtn = document.getElementById("openHostDoubtModalBtn");
+      const hostDoubtModal = document.getElementById("hostDoubtModal");
+      const hostDoubtModalBackdrop = document.getElementById("hostDoubtModalBackdrop");
+      const closeHostDoubtModalBtn = document.getElementById("closeHostDoubtModalBtn");
+      const hostModalBreakoutLink = document.getElementById("hostModalBreakoutLink");
       const hostDoubtFrame = document.getElementById("hostDoubtFrame");
       const doubtRoomCard = document.getElementById("doubtRoomCard");
       let youtubeWarningEl = null;
@@ -145,6 +165,25 @@
       let isDoubtRoomActive = false;
       let activeDoubtRoom = null;
       let sessionEnded = false;
+
+      function openHostDoubtModal() {
+        if (sessionEnded || !activeDoubtRoom?.url) return;
+        hostDoubtModal.classList.remove("hidden", "pointer-events-none");
+        hostDoubtModal.classList.add("flex");
+      }
+
+      function closeHostDoubtModalOnly() {
+        hostDoubtModal.classList.add("hidden", "pointer-events-none");
+        hostDoubtModal.classList.remove("flex");
+      }
+
+      function closeActiveDoubtFromModal() {
+        if (!activeDoubtRoom || sessionEnded) {
+          closeHostDoubtModalOnly();
+          return;
+        }
+        socket.emit("breakout:close");
+      }
 
       const rememberedHostName = window.localStorage.getItem("host_name") || "";
       if (rememberedHostName) {
@@ -173,7 +212,10 @@
         activeDoubtRoom = room || null;
         isDoubtRoomActive = Boolean(activeDoubtRoom);
         closeDoubtBtn.classList.toggle("hidden", !isDoubtRoomActive);
+        openHostDoubtModalBtn.classList.toggle("hidden", !isDoubtRoomActive);
         closeDoubtBtn.disabled = sessionEnded;
+        openHostDoubtModalBtn.disabled = sessionEnded;
+        openHostDoubtModalBtn.classList.toggle("opacity-60", sessionEnded);
         breakoutInfo.textContent = activeDoubtRoom
           ? `Active${activeDoubtRoom.participantName ? ` with ${activeDoubtRoom.participantName}` : ""}`
           : "Inactive";
@@ -182,12 +224,14 @@
           const hostJoinUrl = withJoinIdentity(activeDoubtRoom.url, hostNameInput.value);
           breakoutLinkWrap.classList.remove("hidden");
           breakoutLink.href = activeDoubtRoom.url;
-          hostDoubtEmbedWrap.classList.remove("hidden");
+          hostModalBreakoutLink.href = activeDoubtRoom.url;
           hostDoubtFrame.src = hostJoinUrl;
+          openHostDoubtModal();
         } else {
           breakoutLinkWrap.classList.add("hidden");
           breakoutLink.href = "#";
-          hostDoubtEmbedWrap.classList.add("hidden");
+          hostModalBreakoutLink.href = "#";
+          closeHostDoubtModalOnly();
           hostDoubtFrame.src = "about:blank";
         }
 
@@ -201,9 +245,13 @@
         youtubeUrlInput.disabled = sessionEnded;
         chatInput.disabled = sessionEnded;
         closeDoubtBtn.disabled = sessionEnded;
+        openHostDoubtModalBtn.disabled = sessionEnded;
         endBtn.disabled = sessionEnded;
         endBtn.classList.toggle("opacity-60", sessionEnded);
         endBtn.textContent = sessionEnded ? "Session Ended" : "End Session";
+        if (sessionEnded) {
+          closeHostDoubtModalOnly();
+        }
       }
 
       function renderQueue(items) {
@@ -331,6 +379,24 @@
 
       closeDoubtBtn.addEventListener("click", () => {
         socket.emit("breakout:close");
+      });
+
+      openHostDoubtModalBtn.addEventListener("click", () => {
+        openHostDoubtModal();
+      });
+
+      closeHostDoubtModalBtn.addEventListener("click", () => {
+        closeActiveDoubtFromModal();
+      });
+
+      hostDoubtModalBackdrop.addEventListener("click", () => {
+        closeActiveDoubtFromModal();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !hostDoubtModal.classList.contains("hidden")) {
+          closeActiveDoubtFromModal();
+        }
       });
 
       queueEl.addEventListener("click", (e) => {

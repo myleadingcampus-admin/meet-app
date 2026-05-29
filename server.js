@@ -123,11 +123,15 @@ function closeBreakoutRoom(classroom) {
   const activeRoom = getActiveBreakoutRoom(classroom);
   if (!activeRoom) return;
 
+  classroom.handRaiseQueue = classroom.handRaiseQueue.filter(
+    (item) => item.userId !== activeRoom.userId
+  );
   delete classroom.breakoutRoomsByUserId[activeRoom.userId];
   classroom.activeBreakoutUserId = null;
   classroom.updatedAt = new Date().toISOString();
   clearBreakoutCloseTimer(classroom.id);
 
+  io.to(classroom.id).emit("queue:updated", classroom.handRaiseQueue);
   emitBreakoutToTeachers(classroom.id, classroom);
   io.to(classroom.id).emit("breakout:invited", null);
   io.to(classroom.id).emit("class:updated", publicClassPayload(classroom));

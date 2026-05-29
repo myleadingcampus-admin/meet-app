@@ -64,14 +64,9 @@
         <div id="breakoutSection" class="hidden rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
           <h2 class="font-display text-xl font-semibold text-white">Doubt Room Invite</h2>
           <p class="mt-1 text-sm text-slate-400">You are invited to join the doubt room.</p>
-          <div id="participantDoubtEmbedWrap" class="hidden mt-3 overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
-            <iframe
-              id="participantDoubtFrame"
-              allow="camera *; microphone *; display-capture *; autoplay *; fullscreen *"
-              referrerpolicy="strict-origin-when-cross-origin"
-              class="w-full aspect-video"
-            ></iframe>
-          </div>
+          <button id="openDoubtModalBtn" class="mt-3 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">
+            Open Doubt Room
+          </button>
           <a id="joinBreakoutLink" target="_blank" rel="noreferrer" class="mt-3 inline-flex items-center justify-center rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/15">Join Doubt Room</a>
         </div>
       </section>
@@ -87,6 +82,27 @@
         </section>
       </aside>
     </main>
+
+    <div id="doubtModal" class="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-6">
+      <div id="doubtModalBackdrop" class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"></div>
+      <section class="relative z-10 flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <header class="flex items-center justify-between border-b border-slate-700 px-4 py-3 sm:px-6">
+          <h3 class="font-display text-xl font-semibold text-white">Doubt Room</h3>
+          <div class="flex items-center gap-2">
+            <a id="modalJoinBreakoutLink" target="_blank" rel="noreferrer" class="inline-flex items-center justify-center rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-400/15">Open in New Tab</a>
+            <button id="closeDoubtModalBtn" class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-700">Close</button>
+          </div>
+        </header>
+        <div class="min-h-0 flex-1 bg-slate-950">
+          <iframe
+            id="participantDoubtFrame"
+            allow="camera *; microphone *; display-capture *; autoplay *; fullscreen *"
+            referrerpolicy="strict-origin-when-cross-origin"
+            class="h-full w-full"
+          ></iframe>
+        </div>
+      </section>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="/utils.js"></script>
@@ -106,7 +122,11 @@
       const ytFrame = document.getElementById("ytFrame");
       const breakoutSection = document.getElementById("breakoutSection");
       const joinBreakoutLink = document.getElementById("joinBreakoutLink");
-      const participantDoubtEmbedWrap = document.getElementById("participantDoubtEmbedWrap");
+      const modalJoinBreakoutLink = document.getElementById("modalJoinBreakoutLink");
+      const openDoubtModalBtn = document.getElementById("openDoubtModalBtn");
+      const closeDoubtModalBtn = document.getElementById("closeDoubtModalBtn");
+      const doubtModal = document.getElementById("doubtModal");
+      const doubtModalBackdrop = document.getElementById("doubtModalBackdrop");
       const participantDoubtFrame = document.getElementById("participantDoubtFrame");
       const guardHint = document.getElementById("guardHint");
       const doubtTitle = document.getElementById("doubtTitle");
@@ -121,6 +141,7 @@
       let sessionLive = false;
       let sessionEnded = false;
       let lastClassStatus = "";
+      let activeDoubtJoinUrl = "";
 
       function withJoinIdentity(url, name) {
         if (!url) return "#";
@@ -191,13 +212,26 @@
         chatInput.disabled = sessionEnded;
         joinBreakoutLink.classList.toggle("pointer-events-none", sessionEnded);
         joinBreakoutLink.classList.toggle("opacity-60", sessionEnded);
+        openDoubtModalBtn.disabled = sessionEnded;
+        openDoubtModalBtn.classList.toggle("opacity-60", sessionEnded);
         if (sessionEnded) {
           raiseStatus.textContent = "Session has ended. New requests and messages are disabled.";
           breakoutSection.classList.add("hidden");
-          participantDoubtEmbedWrap.classList.add("hidden");
+          closeDoubtModal();
           participantDoubtFrame.src = "about:blank";
           setLiveStreamMuted(false);
         }
+      }
+
+      function openDoubtModal() {
+        if (sessionEnded || !activeDoubtJoinUrl) return;
+        doubtModal.classList.remove("hidden", "pointer-events-none");
+        doubtModal.classList.add("flex");
+      }
+
+      function closeDoubtModal() {
+        doubtModal.classList.add("hidden", "pointer-events-none");
+        doubtModal.classList.remove("flex");
       }
 
       function applySessionStage(status) {
@@ -293,17 +327,21 @@
         if (sessionEnded) return;
         if (room) {
           const participantJoinUrl = withJoinIdentity(room.url, studentName);
+          activeDoubtJoinUrl = participantJoinUrl;
           breakoutSection.classList.remove("hidden");
           joinBreakoutLink.href = participantJoinUrl;
+          modalJoinBreakoutLink.href = participantJoinUrl;
           joinBreakoutLink.textContent = "Join Doubt Room";
-          participantDoubtEmbedWrap.classList.remove("hidden");
           participantDoubtFrame.src = participantJoinUrl;
           raiseStatus.textContent = "You are invited to the doubt-solving room.";
+          openDoubtModal();
           setLiveStreamMuted(true);
         } else {
+          activeDoubtJoinUrl = "";
           breakoutSection.classList.add("hidden");
           joinBreakoutLink.href = "#";
-          participantDoubtEmbedWrap.classList.add("hidden");
+          modalJoinBreakoutLink.href = "#";
+          closeDoubtModal();
           participantDoubtFrame.src = "about:blank";
           setLiveStreamMuted(false);
         }
@@ -311,6 +349,22 @@
 
       socket.on("session:ended", () => {
         setSessionEndedState(true);
+      });
+
+      openDoubtModalBtn.addEventListener("click", () => {
+        openDoubtModal();
+      });
+
+      closeDoubtModalBtn.addEventListener("click", () => {
+        closeDoubtModal();
+      });
+
+      doubtModalBackdrop.addEventListener("click", () => {
+        closeDoubtModal();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeDoubtModal();
       });
 
       async function syncClassState() {
