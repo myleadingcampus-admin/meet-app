@@ -111,6 +111,7 @@
       const guardHint = document.getElementById("guardHint");
       const raiseStatus = document.getElementById("raiseStatus");
       let youtubeWarningEl = null;
+      let currentYouTubeEmbedSrc = "";
 
       function withJoinIdentity(url, name) {
         if (!url) return "#";
@@ -146,7 +147,10 @@
           const embedUrl = toYouTubeEmbedUrl(state.youtubeUrl);
           if (embedUrl) {
             ytContainer.classList.remove("hidden");
-            ytFrame.src = embedUrl;
+            if (currentYouTubeEmbedSrc !== embedUrl) {
+              currentYouTubeEmbedSrc = embedUrl;
+              ytFrame.src = embedUrl;
+            }
             if (youtubeWarningEl) {
               youtubeWarningEl.remove();
               youtubeWarningEl = null;
@@ -218,12 +222,24 @@
         }
       });
 
-      fetch(`/api/classes/${classId}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.error) return;
-          applyClassState(data);
-        });
+      async function syncClassState() {
+        try {
+          const r = await fetch(`/api/classes/${classId}`);
+          const data = await r.json();
+          if (!data.error) applyClassState(data);
+        } catch (_err) {
+          // Ignore transient sync errors; realtime socket events continue to work.
+        }
+      }
+
+      syncClassState();
+
+      // Fallback sync to auto-detect live URL updates even if a socket event is missed.
+      setInterval(syncClassState, 8000);
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") syncClassState();
+      });
     </script>
   </body>
 </html>
