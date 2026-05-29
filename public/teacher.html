@@ -66,14 +66,6 @@
           </div>
           <p class="text-sm text-slate-400">Starts automatically with session and auto-closes after inactivity.</p>
 
-          <button id="closeDoubtBtn" type="button" class="hidden mt-4 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 active:scale-[0.99]">
-            Close Doubt Room
-          </button>
-
-          <button id="openHostDoubtModalBtn" type="button" class="hidden mt-4 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 active:scale-[0.99]">
-            Open Doubt Room
-          </button>
-
           <div id="breakoutLinkWrap" class="hidden mt-4 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
             <a id="breakoutLink" target="_blank" rel="noreferrer" class="truncate rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-cyan-300 hover:text-cyan-200">Open Doubt Room</a>
             <button id="copyBreakoutBtn" type="button" class="rounded-xl bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700">Copy Link</button>
@@ -92,7 +84,7 @@
             <div class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1">
               <span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Alert</span>
               <button id="volumeDownBtn" type="button" class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-slate-100 hover:bg-slate-700">-</button>
-              <input id="volumeSlider" type="range" min="0" max="100" step="5" value="85" class="h-1.5 w-20 cursor-pointer accent-cyan-400" />
+              <input id="volumeSlider" type="range" min="40" max="100" step="5" value="85" class="h-1.5 w-20 cursor-pointer accent-cyan-400" />
               <button id="volumeUpBtn" type="button" class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-slate-100 hover:bg-slate-700">+</button>
               <span id="volumeValue" class="w-10 text-right text-xs font-semibold text-cyan-300">85%</span>
             </div>
@@ -118,7 +110,7 @@
           <h3 class="font-display text-xl font-semibold text-white">Doubt Room</h3>
           <div class="flex items-center gap-2">
             <a id="hostModalBreakoutLink" target="_blank" rel="noreferrer" class="inline-flex items-center justify-center rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-400/15">Open in New Tab</a>
-            <button id="closeHostDoubtModalBtn" type="button" class="inline-flex items-center justify-center rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-500">Close Doubt Room</button>
+            <button id="closeHostSessionBtn" type="button" class="inline-flex items-center justify-center rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-500">Close Session</button>
           </div>
         </header>
         <div class="min-h-0 flex-1 bg-slate-950">
@@ -150,12 +142,10 @@
       const breakoutLinkWrap = document.getElementById("breakoutLinkWrap");
       const breakoutLink = document.getElementById("breakoutLink");
       const copyBreakoutBtn = document.getElementById("copyBreakoutBtn");
-      const closeDoubtBtn = document.getElementById("closeDoubtBtn");
-      const openHostDoubtModalBtn = document.getElementById("openHostDoubtModalBtn");
       const hostDoubtModal = document.getElementById("hostDoubtModal");
       const hostDoubtModalBackdrop = document.getElementById("hostDoubtModalBackdrop");
-      const closeHostDoubtModalBtn = document.getElementById("closeHostDoubtModalBtn");
       const hostModalBreakoutLink = document.getElementById("hostModalBreakoutLink");
+      const closeHostSessionBtn = document.getElementById("closeHostSessionBtn");
       const hostDoubtFrame = document.getElementById("hostDoubtFrame");
       const doubtRoomCard = document.getElementById("doubtRoomCard");
       let youtubeWarningEl = null;
@@ -181,10 +171,11 @@
       let previousPendingIds = new Set();
       let audioContext = null;
       const DEFAULT_NOTIFICATION_VOLUME = 0.85;
+      const MIN_NOTIFICATION_VOLUME = 0.4;
       let notificationVolume = DEFAULT_NOTIFICATION_VOLUME;
 
       function setNotificationVolume(nextVolume) {
-        const clamped = Math.max(0, Math.min(1, Number(nextVolume)));
+        const clamped = Math.max(MIN_NOTIFICATION_VOLUME, Math.min(1, Number(nextVolume)));
         notificationVolume = Number.isFinite(clamped) ? clamped : DEFAULT_NOTIFICATION_VOLUME;
         const percentage = Math.round(notificationVolume * 100);
         volumeSlider.value = String(percentage);
@@ -237,6 +228,10 @@
           closeHostDoubtModalOnly();
           return;
         }
+
+        // Leave embedded meet locally before ending the room for all users.
+        hostDoubtFrame.src = "about:blank";
+        closeHostDoubtModalOnly();
         socket.emit("breakout:close");
       }
 
@@ -266,11 +261,6 @@
       function applyActiveDoubtRoom(room) {
         activeDoubtRoom = room || null;
         isDoubtRoomActive = Boolean(activeDoubtRoom);
-        closeDoubtBtn.classList.toggle("hidden", !isDoubtRoomActive);
-        openHostDoubtModalBtn.classList.toggle("hidden", !isDoubtRoomActive);
-        closeDoubtBtn.disabled = sessionEnded;
-        openHostDoubtModalBtn.disabled = sessionEnded;
-        openHostDoubtModalBtn.classList.toggle("opacity-60", sessionEnded);
         breakoutInfo.textContent = activeDoubtRoom
           ? `Active${activeDoubtRoom.participantName ? ` with ${activeDoubtRoom.participantName}` : ""}`
           : "Inactive";
@@ -299,8 +289,6 @@
         titleInput.disabled = sessionEnded;
         youtubeUrlInput.disabled = sessionEnded;
         chatInput.disabled = sessionEnded;
-        closeDoubtBtn.disabled = sessionEnded;
-        openHostDoubtModalBtn.disabled = sessionEnded;
         endBtn.disabled = sessionEnded;
         endBtn.classList.toggle("opacity-60", sessionEnded);
         endBtn.textContent = sessionEnded ? "Session Ended" : "End Session";
@@ -444,7 +432,8 @@
         window.addEventListener(evtName, ensureAudioContext, { passive: true });
       });
 
-      const savedVolume = Number(window.localStorage.getItem("doubt_notification_volume"));
+      const savedVolumeRaw = window.localStorage.getItem("doubt_notification_volume");
+      const savedVolume = savedVolumeRaw === null ? NaN : Number(savedVolumeRaw);
       setNotificationVolume(Number.isFinite(savedVolume) ? savedVolume : DEFAULT_NOTIFICATION_VOLUME);
 
       document.getElementById("endBtn").addEventListener("click", async () => {
@@ -453,19 +442,11 @@
         if (res.ok) applyClassState(data);
       });
 
-      closeDoubtBtn.addEventListener("click", () => {
-        socket.emit("breakout:close");
-      });
-
-      openHostDoubtModalBtn.addEventListener("click", () => {
-        openHostDoubtModal();
-      });
-
-      closeHostDoubtModalBtn.addEventListener("click", () => {
+      hostDoubtModalBackdrop.addEventListener("click", () => {
         closeActiveDoubtFromModal();
       });
 
-      hostDoubtModalBackdrop.addEventListener("click", () => {
+      closeHostSessionBtn.addEventListener("click", () => {
         closeActiveDoubtFromModal();
       });
 

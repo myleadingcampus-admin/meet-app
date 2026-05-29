@@ -108,7 +108,17 @@
     <script src="/utils.js"></script>
     <script>
       const classId = getRequiredQuery("classId");
-      const studentName = prompt("Enter your name", "Participant") || "Participant";
+      let studentName = "Participant";
+      try {
+        const remembered = window.localStorage.getItem("student_name") || "Participant";
+        const entered = typeof window.prompt === "function"
+          ? window.prompt("Enter your name", remembered)
+          : remembered;
+        studentName = (entered || remembered || "Participant").trim() || "Participant";
+      } catch (_err) {
+        studentName = "Participant";
+      }
+      window.localStorage.setItem("student_name", studentName);
       const socket = io();
       const student = {
         userId: `student-${Math.random().toString(36).slice(2, 8)}`,
@@ -234,6 +244,18 @@
         doubtModal.classList.remove("flex");
       }
 
+      function closeDoubtRoomForAll() {
+        if (sessionEnded || !activeDoubtJoinUrl) {
+          closeDoubtModal();
+          return;
+        }
+
+        // Leave embedded meet locally before ending the room for everyone.
+        participantDoubtFrame.src = "about:blank";
+        closeDoubtModal();
+        socket.emit("breakout:close");
+      }
+
       function applySessionStage(status) {
         sessionLive = status === "live";
         const waiting = status === "scheduled";
@@ -357,15 +379,15 @@
       });
 
       closeDoubtModalBtn.addEventListener("click", () => {
-        closeDoubtModal();
+        closeDoubtRoomForAll();
       });
 
       doubtModalBackdrop.addEventListener("click", () => {
-        closeDoubtModal();
+        closeDoubtRoomForAll();
       });
 
       document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") closeDoubtModal();
+        if (e.key === "Escape") closeDoubtRoomForAll();
       });
 
       async function syncClassState() {

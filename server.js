@@ -353,10 +353,18 @@ io.on("connection", (socket) => {
   socket.on("breakout:close", () => {
     const classId = socket.data.classId;
     const participant = socket.data.participant;
-    if (!classId || !participant || participant.role !== "teacher") return;
+    if (!classId || !participant) return;
 
     const classroom = ensureClass(classId);
     if (!canInteract(classroom)) return;
+
+    const activeRoom = getActiveBreakoutRoom(classroom);
+    if (!activeRoom) return;
+
+    const isTeacher = participant.role === "teacher";
+    const isActiveParticipant = participant.userId === activeRoom.userId;
+    if (!isTeacher && !isActiveParticipant) return;
+
     closeBreakoutRoom(classroom);
   });
 
