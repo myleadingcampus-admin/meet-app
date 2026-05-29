@@ -116,6 +116,7 @@
       let youtubeWarningEl = null;
       let currentYouTubeEmbedSrc = "";
       let isLiveMutedForDoubt = false;
+      let muteRetryTimer = null;
       let sessionEnded = false;
 
       function withJoinIdentity(url, name) {
@@ -145,11 +146,8 @@
         chatEl.scrollTop = chatEl.scrollHeight;
       }
 
-      function setLiveStreamMuted(shouldMute) {
+      function postYouTubeCommand(func) {
         if (!ytFrame || !ytFrame.contentWindow) return;
-        if (isLiveMutedForDoubt === shouldMute) return;
-
-        const func = shouldMute ? "mute" : "unMute";
         ytFrame.contentWindow.postMessage(
           JSON.stringify({
             event: "command",
@@ -158,7 +156,30 @@
           }),
           "*"
         );
-        isLiveMutedForDoubt = shouldMute;
+      }
+
+      function setLiveStreamMuted(shouldMute) {
+        const next = Boolean(shouldMute);
+        isLiveMutedForDoubt = next;
+
+        if (muteRetryTimer) {
+          clearInterval(muteRetryTimer);
+          muteRetryTimer = null;
+        }
+
+        const func = next ? "mute" : "unMute";
+        postYouTubeCommand(func);
+
+        // YouTube iframe API can ignore early commands until player is fully ready.
+        let attempts = 0;
+        muteRetryTimer = setInterval(() => {
+          attempts += 1;
+          postYouTubeCommand(func);
+          if (attempts >= 6) {
+            clearInterval(muteRetryTimer);
+            muteRetryTimer = null;
+          }
+        }, 350);
       }
 
       function setSessionEndedState(ended) {
@@ -213,6 +234,12 @@
         if (sessionEnded) return;
         socket.emit("hand-raise:add");
         raiseStatus.textContent = "Hand raise sent. Waiting for host approval.";
+      });
+
+      ytFrame.addEventListener("load", () => {
+        if (isLiveMutedForDoubt) {
+          setLiveStreamMuted(true);
+        }
       });
 
       guardHint.textContent = "Playback is enabled in session mode.";
