@@ -241,7 +241,9 @@ io.on("connection", (socket) => {
 
     const classroom = ensureClass(classId);
     if (!canInteract(classroom)) return;
-    const alreadyQueued = classroom.handRaiseQueue.some((x) => x.userId === participant.userId);
+    const alreadyQueued = classroom.handRaiseQueue.some(
+      (x) => x.userId === participant.userId && x.status === "pending"
+    );
     if (alreadyQueued) return;
 
     classroom.handRaiseQueue.push({
