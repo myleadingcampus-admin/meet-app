@@ -87,7 +87,16 @@
 
       <aside class="space-y-4">
         <section class="rounded-2xl border border-slate-700/70 bg-slate-900/60 p-5 shadow-premium backdrop-blur-xl">
-          <h2 class="font-display text-xl font-semibold text-white">Request Queue</h2>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="font-display text-xl font-semibold text-white">Request Queue</h2>
+            <div class="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1">
+              <span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Alert</span>
+              <button id="volumeDownBtn" type="button" class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-slate-100 hover:bg-slate-700">-</button>
+              <input id="volumeSlider" type="range" min="0" max="100" step="5" value="85" class="h-1.5 w-20 cursor-pointer accent-cyan-400" />
+              <button id="volumeUpBtn" type="button" class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-slate-100 hover:bg-slate-700">+</button>
+              <span id="volumeValue" class="w-10 text-right text-xs font-semibold text-cyan-300">85%</span>
+            </div>
+          </div>
           <ul id="queue" class="mt-3 space-y-2"></ul>
         </section>
 
@@ -155,6 +164,10 @@
       const hostNameInput = document.getElementById("hostName");
       const titleInput = document.getElementById("title");
       const youtubeUrlInput = document.getElementById("youtubeUrl");
+      const volumeDownBtn = document.getElementById("volumeDownBtn");
+      const volumeSlider = document.getElementById("volumeSlider");
+      const volumeUpBtn = document.getElementById("volumeUpBtn");
+      const volumeValue = document.getElementById("volumeValue");
       const endBtn = document.getElementById("endBtn");
       const chatForm = document.getElementById("chatForm");
       const chatInput = document.getElementById("chatInput");
@@ -167,6 +180,17 @@
       let sessionEnded = false;
       let previousPendingIds = new Set();
       let audioContext = null;
+      const DEFAULT_NOTIFICATION_VOLUME = 0.85;
+      let notificationVolume = DEFAULT_NOTIFICATION_VOLUME;
+
+      function setNotificationVolume(nextVolume) {
+        const clamped = Math.max(0, Math.min(1, Number(nextVolume)));
+        notificationVolume = Number.isFinite(clamped) ? clamped : DEFAULT_NOTIFICATION_VOLUME;
+        const percentage = Math.round(notificationVolume * 100);
+        volumeSlider.value = String(percentage);
+        volumeValue.textContent = `${percentage}%`;
+        window.localStorage.setItem("doubt_notification_volume", String(notificationVolume));
+      }
 
       function ensureAudioContext() {
         if (!audioContext) {
@@ -189,7 +213,7 @@
         osc.frequency.setValueAtTime(1320, now);
         osc.frequency.exponentialRampToValueAtTime(1760, now + 0.09);
         gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.15, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.22 * notificationVolume, now + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
         osc.connect(gain);
         gain.connect(audioContext.destination);
@@ -407,9 +431,21 @@
       youtubeUrlInput.addEventListener("input", scheduleAutoStart);
       youtubeUrlInput.addEventListener("change", scheduleAutoStart);
       youtubeUrlInput.addEventListener("blur", scheduleAutoStart);
+      volumeSlider.addEventListener("input", () => {
+        setNotificationVolume(Number(volumeSlider.value) / 100);
+      });
+      volumeDownBtn.addEventListener("click", () => {
+        setNotificationVolume(notificationVolume - 0.1);
+      });
+      volumeUpBtn.addEventListener("click", () => {
+        setNotificationVolume(notificationVolume + 0.1);
+      });
       ["click", "keydown", "touchstart"].forEach((evtName) => {
         window.addEventListener(evtName, ensureAudioContext, { passive: true });
       });
+
+      const savedVolume = Number(window.localStorage.getItem("doubt_notification_volume"));
+      setNotificationVolume(Number.isFinite(savedVolume) ? savedVolume : DEFAULT_NOTIFICATION_VOLUME);
 
       document.getElementById("endBtn").addEventListener("click", async () => {
         const res = await fetch(`/api/classes/${classId}/end`, { method: "POST" });
