@@ -110,8 +110,13 @@
       const participantDoubtFrame = document.getElementById("participantDoubtFrame");
       const guardHint = document.getElementById("guardHint");
       const raiseStatus = document.getElementById("raiseStatus");
+      const raiseHandBtn = document.getElementById("raiseHandBtn");
+      const chatForm = document.getElementById("chatForm");
+      const chatInput = document.getElementById("chatInput");
       let youtubeWarningEl = null;
       let currentYouTubeEmbedSrc = "";
+      let isLiveMutedForDoubt = false;
+      let sessionEnded = false;
 
       function withJoinIdentity(url, name) {
         if (!url) return "#";
@@ -140,8 +145,40 @@
         chatEl.scrollTop = chatEl.scrollHeight;
       }
 
+      function setLiveStreamMuted(shouldMute) {
+        if (!ytFrame || !ytFrame.contentWindow) return;
+        if (isLiveMutedForDoubt === shouldMute) return;
+
+        const func = shouldMute ? "mute" : "unMute";
+        ytFrame.contentWindow.postMessage(
+          JSON.stringify({
+            event: "command",
+            func,
+            args: [],
+          }),
+          "*"
+        );
+        isLiveMutedForDoubt = shouldMute;
+      }
+
+      function setSessionEndedState(ended) {
+        sessionEnded = Boolean(ended);
+        raiseHandBtn.disabled = sessionEnded;
+        chatInput.disabled = sessionEnded;
+        joinBreakoutLink.classList.toggle("pointer-events-none", sessionEnded);
+        joinBreakoutLink.classList.toggle("opacity-60", sessionEnded);
+        if (sessionEnded) {
+          raiseStatus.textContent = "Session has ended. New requests and messages are disabled.";
+          breakoutSection.classList.add("hidden");
+          participantDoubtEmbedWrap.classList.add("hidden");
+          participantDoubtFrame.src = "about:blank";
+          setLiveStreamMuted(false);
+        }
+      }
+
       function applyClassState(state) {
         meta.textContent = `Class ID: ${state.id} | Status: ${state.status} | Participants: ${state.participantCount}`;
+        setSessionEndedState(state.status === "ended");
 
         if (state.youtubeUrl) {
           const embedUrl = toYouTubeEmbedUrl(state.youtubeUrl);
@@ -170,25 +207,21 @@
 
         chatEl.innerHTML = "";
         (state.chat || []).forEach(appendChat);
-
-        breakoutSection.classList.add("hidden");
-        joinBreakoutLink.href = "#";
-        participantDoubtEmbedWrap.classList.add("hidden");
-        participantDoubtFrame.src = "about:blank";
       }
 
-      document.getElementById("raiseHandBtn").addEventListener("click", () => {
+      raiseHandBtn.addEventListener("click", () => {
+        if (sessionEnded) return;
         socket.emit("hand-raise:add");
         raiseStatus.textContent = "Hand raise sent. Waiting for host approval.";
       });
 
       guardHint.textContent = "Playback is enabled in session mode.";
 
-      document.getElementById("chatForm").addEventListener("submit", (e) => {
+      chatForm.addEventListener("submit", (e) => {
         e.preventDefault();
-        const input = document.getElementById("chatInput");
-        socket.emit("chat:send", { message: input.value });
-        input.value = "";
+        if (sessionEnded) return;
+        socket.emit("chat:send", { message: chatInput.value });
+        chatInput.value = "";
       });
 
       socket.on("connect", () => {
@@ -206,6 +239,7 @@
       });
 
       socket.on("breakout:invited", (room) => {
+        if (sessionEnded) return;
         if (room) {
           const participantJoinUrl = withJoinIdentity(room.url, studentName);
           breakoutSection.classList.remove("hidden");
@@ -214,12 +248,18 @@
           participantDoubtEmbedWrap.classList.remove("hidden");
           participantDoubtFrame.src = participantJoinUrl;
           raiseStatus.textContent = "You are invited to the doubt-solving room.";
+          setLiveStreamMuted(true);
         } else {
           breakoutSection.classList.add("hidden");
           joinBreakoutLink.href = "#";
           participantDoubtEmbedWrap.classList.add("hidden");
           participantDoubtFrame.src = "about:blank";
+          setLiveStreamMuted(false);
         }
+      });
+
+      socket.on("session:ended", () => {
+        setSessionEndedState(true);
       });
 
       async function syncClassState() {

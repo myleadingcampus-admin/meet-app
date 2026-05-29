@@ -66,7 +66,7 @@
           </div>
           <p class="text-sm text-slate-400">Starts automatically with session and auto-closes after inactivity.</p>
 
-          <button id="closeDoubtBtn" type="button" class="mt-4 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 active:scale-[0.99]">
+          <button id="closeDoubtBtn" type="button" class="hidden mt-4 inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-rose-500 to-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 active:scale-[0.99]">
             Close Doubt Room
           </button>
 
@@ -135,11 +135,16 @@
       const hostNameInput = document.getElementById("hostName");
       const titleInput = document.getElementById("title");
       const youtubeUrlInput = document.getElementById("youtubeUrl");
+      const endBtn = document.getElementById("endBtn");
+      const chatForm = document.getElementById("chatForm");
+      const chatInput = document.getElementById("chatInput");
       let autoStartTimer = null;
       let isStarting = false;
       let lastStartedUrl = "";
       let hasPendingDoubt = false;
       let isDoubtRoomActive = false;
+      let activeDoubtRoom = null;
+      let sessionEnded = false;
 
       const rememberedHostName = window.localStorage.getItem("host_name") || "";
       if (rememberedHostName) {
@@ -162,6 +167,43 @@
       function refreshDoubtRoomVisibility() {
         const shouldShow = hasPendingDoubt || isDoubtRoomActive;
         doubtRoomCard.classList.toggle("hidden", !shouldShow);
+      }
+
+      function applyActiveDoubtRoom(room) {
+        activeDoubtRoom = room || null;
+        isDoubtRoomActive = Boolean(activeDoubtRoom);
+        closeDoubtBtn.classList.toggle("hidden", !isDoubtRoomActive);
+        closeDoubtBtn.disabled = sessionEnded;
+        breakoutInfo.textContent = activeDoubtRoom
+          ? `Active${activeDoubtRoom.participantName ? ` with ${activeDoubtRoom.participantName}` : ""}`
+          : "Inactive";
+
+        if (activeDoubtRoom?.url) {
+          const hostJoinUrl = withJoinIdentity(activeDoubtRoom.url, hostNameInput.value);
+          breakoutLinkWrap.classList.remove("hidden");
+          breakoutLink.href = activeDoubtRoom.url;
+          hostDoubtEmbedWrap.classList.remove("hidden");
+          hostDoubtFrame.src = hostJoinUrl;
+        } else {
+          breakoutLinkWrap.classList.add("hidden");
+          breakoutLink.href = "#";
+          hostDoubtEmbedWrap.classList.add("hidden");
+          hostDoubtFrame.src = "about:blank";
+        }
+
+        refreshDoubtRoomVisibility();
+      }
+
+      function setSessionEndedState(ended) {
+        sessionEnded = Boolean(ended);
+        hostNameInput.disabled = sessionEnded;
+        titleInput.disabled = sessionEnded;
+        youtubeUrlInput.disabled = sessionEnded;
+        chatInput.disabled = sessionEnded;
+        closeDoubtBtn.disabled = sessionEnded;
+        endBtn.disabled = sessionEnded;
+        endBtn.classList.toggle("opacity-60", sessionEnded);
+        endBtn.textContent = sessionEnded ? "Session Ended" : "End Session";
       }
 
       function renderQueue(items) {
@@ -207,6 +249,7 @@
 
       function applyClassState(state) {
         meta.textContent = `Class ID: ${state.id} | Status: ${state.status} | Participants: ${state.participantCount}`;
+        setSessionEndedState(state.status === "ended");
         renderQueue(state.handRaiseQueue || []);
 
         if (state.youtubeUrl) {
@@ -228,18 +271,11 @@
           }
         }
 
-        breakoutInfo.textContent = state.breakoutRoom
-          ? "Doubt room is active"
-          : "No active doubt room";
-
-        isDoubtRoomActive = Boolean(state.breakoutRoom);
-        refreshDoubtRoomVisibility();
-
-        if (!state.breakoutRoom) {
-          breakoutLinkWrap.classList.add("hidden");
-          breakoutLink.href = "#";
-          hostDoubtEmbedWrap.classList.add("hidden");
-          hostDoubtFrame.src = "about:blank";
+        if (sessionEnded) {
+          hasPendingDoubt = false;
+          applyActiveDoubtRoom(null);
+        } else {
+          applyActiveDoubtRoom(activeDoubtRoom);
         }
 
         chatEl.innerHTML = "";
@@ -298,6 +334,7 @@
       });
 
       queueEl.addEventListener("click", (e) => {
+        if (sessionEnded) return;
         const target = e.target;
         if (!(target instanceof HTMLButtonElement)) return;
         socket.emit("hand-raise:resolve", {
@@ -306,11 +343,11 @@
         });
       });
 
-      document.getElementById("chatForm").addEventListener("submit", (e) => {
+      chatForm.addEventListener("submit", (e) => {
         e.preventDefault();
-        const input = document.getElementById("chatInput");
-        socket.emit("chat:send", { message: input.value });
-        input.value = "";
+        if (sessionEnded) return;
+        socket.emit("chat:send", { message: chatInput.value });
+        chatInput.value = "";
       });
 
       socket.on("connect", () => {
@@ -321,21 +358,15 @@
       socket.on("queue:updated", renderQueue);
       socket.on("chat:message", appendChat);
       socket.on("breakout:updated", (room) => {
-        breakoutInfo.textContent = room ? "Active" : "Inactive";
-        isDoubtRoomActive = Boolean(room);
-        refreshDoubtRoomVisibility();
-        if (room?.url) {
-          const hostJoinUrl = withJoinIdentity(room.url, hostNameInput.value);
-          breakoutLinkWrap.classList.remove("hidden");
-          breakoutLink.href = room.url;
-          hostDoubtEmbedWrap.classList.remove("hidden");
-          hostDoubtFrame.src = hostJoinUrl;
-        } else {
-          breakoutLinkWrap.classList.add("hidden");
-          breakoutLink.href = "#";
-          hostDoubtEmbedWrap.classList.add("hidden");
-          hostDoubtFrame.src = "about:blank";
-        }
+        if (sessionEnded) return;
+        applyActiveDoubtRoom(room);
+      });
+
+      socket.on("session:ended", () => {
+        setSessionEndedState(true);
+        hasPendingDoubt = false;
+        renderQueue([]);
+        applyActiveDoubtRoom(null);
       });
 
       copyBreakoutBtn.addEventListener("click", async () => {

@@ -41,7 +41,8 @@ function ensureClass(classId) {
       handRaiseQueue: [],
       chat: [],
       participants: new Map(),
-      breakoutRoom: null,
+      breakoutRoomsByUserId: {},
+      activeBreakoutUserId: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -63,6 +64,10 @@ function publicClassPayload(classroom) {
   };
 }
 
+function canInteract(classroom) {
+  return classroom && classroom.status !== "ended";
+}
+
 function findSocketIdByUserId(classroom, userId) {
   for (const [socketId, participant] of classroom.participants.entries()) {
     if (participant.userId === userId) return socketId;
@@ -71,24 +76,34 @@ function findSocketIdByUserId(classroom, userId) {
 }
 
 function emitBreakoutToTeachers(classroomId, classroom) {
+  const activeRoom = getActiveBreakoutRoom(classroom);
   for (const [socketId, participant] of classroom.participants.entries()) {
     if (participant.role === "teacher") {
-      io.to(socketId).emit("breakout:updated", classroom.breakoutRoom);
+      io.to(socketId).emit("breakout:updated", activeRoom);
     }
   }
 }
 
-function ensureBreakoutRoom(classroom) {
-  if (classroom.breakoutRoom) return classroom.breakoutRoom;
+function getActiveBreakoutRoom(classroom) {
+  if (!classroom.activeBreakoutUserId) return null;
+  return classroom.breakoutRoomsByUserId[classroom.activeBreakoutUserId] || null;
+}
 
-  const safeRoom = `session-${classroom.id}-doubt-room`;
-  classroom.breakoutRoom = {
+function ensureBreakoutRoom(classroom, userId, participantName) {
+  const existing = classroom.breakoutRoomsByUserId[userId];
+  if (existing) return existing;
+
+  const safeRoom = `session-${classroom.id}-${userId}-doubt-room`;
+  const room = {
+    userId,
+    participantName: participantName || "Participant",
     roomName: safeRoom,
     url: buildDoubtRoomUrl(safeRoom),
     openedAt: new Date().toISOString(),
   };
+  classroom.breakoutRoomsByUserId[userId] = room;
   classroom.updatedAt = new Date().toISOString();
-  return classroom.breakoutRoom;
+  return room;
 }
 
 function buildDoubtRoomUrl(roomName) {
@@ -105,9 +120,11 @@ function clearBreakoutCloseTimer(classId) {
 }
 
 function closeBreakoutRoom(classroom) {
-  if (!classroom.breakoutRoom) return;
+  const activeRoom = getActiveBreakoutRoom(classroom);
+  if (!activeRoom) return;
 
-  classroom.breakoutRoom = null;
+  delete classroom.breakoutRoomsByUserId[activeRoom.userId];
+  classroom.activeBreakoutUserId = null;
   classroom.updatedAt = new Date().toISOString();
   clearBreakoutCloseTimer(classroom.id);
 
@@ -153,6 +170,10 @@ app.post("/api/classes/:id/start", (req, res) => {
   const classroom = ensureClass(req.params.id);
   const { title, youtubeUrl } = req.body || {};
 
+  if (classroom.status === "ended") {
+    return res.status(409).json({ error: "Session has ended and cannot be restarted" });
+  }
+
   if (!youtubeUrl || !youtubeUrl.includes("youtube")) {
     return res.status(400).json({ error: "Valid YouTube URL is required" });
   }
@@ -160,8 +181,6 @@ app.post("/api/classes/:id/start", (req, res) => {
   classroom.title = (title || classroom.title).trim();
   classroom.youtubeUrl = youtubeUrl.trim();
   classroom.status = "live";
-  ensureBreakoutRoom(classroom);
-  scheduleBreakoutAutoClose(classroom);
   classroom.updatedAt = new Date().toISOString();
 
   emitBreakoutToTeachers(classroom.id, classroom);
@@ -176,9 +195,12 @@ app.post("/api/classes/:id/end", (req, res) => {
   }
 
   classroom.status = "ended";
+  classroom.handRaiseQueue = [];
+  classroom.chat = [];
   closeBreakoutRoom(classroom);
   classroom.updatedAt = new Date().toISOString();
   io.to(classroom.id).emit("class:updated", publicClassPayload(classroom));
+  io.to(classroom.id).emit("session:ended");
   return res.json(publicClassPayload(classroom));
 });
 
@@ -187,6 +209,12 @@ io.on("connection", (socket) => {
     if (!classId) return;
 
     const classroom = ensureClass(classId);
+    if (classroom.status === "ended") {
+      socket.emit("class:updated", publicClassPayload(classroom));
+      socket.emit("session:ended");
+      return;
+    }
+
     const participant = {
       userId: userId || uuidv4(),
       role: role || "student",
@@ -201,7 +229,7 @@ io.on("connection", (socket) => {
 
     socket.emit("class:updated", publicClassPayload(classroom));
     if (participant.role === "teacher") {
-      socket.emit("breakout:updated", classroom.breakoutRoom);
+      socket.emit("breakout:updated", getActiveBreakoutRoom(classroom));
     }
     io.to(classId).emit("participants:count", classroom.participants.size);
   });
@@ -212,6 +240,7 @@ io.on("connection", (socket) => {
     if (!classId || !participant) return;
 
     const classroom = ensureClass(classId);
+    if (!canInteract(classroom)) return;
     const alreadyQueued = classroom.handRaiseQueue.some((x) => x.userId === participant.userId);
     if (alreadyQueued) return;
 
@@ -232,15 +261,23 @@ io.on("connection", (socket) => {
     if (!classId || !participant || participant.role !== "teacher") return;
 
     const classroom = ensureClass(classId);
+    if (!canInteract(classroom)) return;
     classroom.handRaiseQueue = classroom.handRaiseQueue.map((item) => {
       if (item.userId !== userId) return item;
       return { ...item, status: action === "accept" ? "accepted" : "rejected" };
     });
 
     if (action === "accept") {
-      ensureBreakoutRoom(classroom);
+      const approved = classroom.handRaiseQueue.find((item) => item.userId === userId);
+      const room = ensureBreakoutRoom(classroom, userId, approved?.name);
+      classroom.activeBreakoutUserId = userId;
       scheduleBreakoutAutoClose(classroom);
       emitBreakoutToTeachers(classId, classroom);
+
+      const targetSocketId = findSocketIdByUserId(classroom, userId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("breakout:invited", room);
+      }
     }
 
     classroom.updatedAt = new Date().toISOString();
@@ -251,10 +288,6 @@ io.on("connection", (socket) => {
       io.to(targetSocketId).emit("hand-raise:result", {
         status: action === "accept" ? "accepted" : "rejected",
       });
-
-      if (action === "accept" && classroom.breakoutRoom) {
-        io.to(targetSocketId).emit("breakout:invited", classroom.breakoutRoom);
-      }
     }
   });
 
@@ -264,6 +297,7 @@ io.on("connection", (socket) => {
     if (!classId || !participant || !message?.trim()) return;
 
     const classroom = ensureClass(classId);
+    if (!canInteract(classroom)) return;
     const payload = {
       id: uuidv4(),
       userId: participant.userId,
@@ -285,26 +319,24 @@ io.on("connection", (socket) => {
     if (!classId || !participant || participant.role !== "teacher") return;
 
     const classroom = ensureClass(classId);
+    if (!canInteract(classroom)) return;
     const safeRoom = (roomName || `class-${classId}-doubt-room`).replace(/\s+/g, "-");
-    classroom.breakoutRoom = {
+    const room = {
+      userId: "manual",
+      participantName: "Manual",
       roomName: safeRoom,
       url: buildDoubtRoomUrl(safeRoom),
       openedAt: new Date().toISOString(),
     };
+    classroom.breakoutRoomsByUserId.manual = room;
+    classroom.activeBreakoutUserId = "manual";
     scheduleBreakoutAutoClose(classroom);
     classroom.updatedAt = new Date().toISOString();
 
     // Notify teachers only for room control UI.
     emitBreakoutToTeachers(classId, classroom);
 
-    // Invite only accepted students.
-    for (const request of classroom.handRaiseQueue) {
-      if (request.status !== "accepted") continue;
-      const targetSocketId = findSocketIdByUserId(classroom, request.userId);
-      if (targetSocketId) {
-        io.to(targetSocketId).emit("breakout:invited", classroom.breakoutRoom);
-      }
-    }
+    io.to(classId).emit("breakout:invited", room);
 
     io.to(classId).emit("class:updated", publicClassPayload(classroom));
   });
@@ -315,6 +347,7 @@ io.on("connection", (socket) => {
     if (!classId || !participant || participant.role !== "teacher") return;
 
     const classroom = ensureClass(classId);
+    if (!canInteract(classroom)) return;
     closeBreakoutRoom(classroom);
   });
 
